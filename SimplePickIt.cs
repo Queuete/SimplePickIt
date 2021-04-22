@@ -1,8 +1,10 @@
 using ExileCore;
 using ExileCore.PoEMemory.Elements;
+using ExileCore.Shared;
 using ExileCore.Shared.Enums;
 using SharpDX;
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -13,27 +15,23 @@ namespace SimplePickIt
 {
     public class SimplePickIt : BaseSettingsPlugin<SimplePickItSettings>
     {
-        private Stopwatch Timer { get; } = new Stopwatch();
         private Random Random { get; } = new Random();
-        private static bool IsRunning { get; set; } = false;
 
-        public override bool Initialise()
+        public override void Render()
         {
-            Timer.Start();
-            return true;
+            if (!IsRunConditionMet()) return;
+
+            var coroutineWorker = new Coroutine(PickItems(), this, "SimplePickIt.PickItems");
+            Core.ParallelRunner.Run(coroutineWorker);
         }
 
-        public override Job Tick()
+        private bool IsRunConditionMet()
         {
-            if (!Input.GetKeyState(Settings.PickUpKey.Value)) return null;
-            if (!GameController.Window.IsForeground()) return null;
-            if (GameController.Game.IngameState.IngameUi.InventoryPanel.IsVisible) return null;
-            if (IsRunning) return null;
+            if (!Input.GetKeyState(Settings.PickUpKey.Value)) return false;
+            if (!GameController.Window.IsForeground()) return false;
+            if (GameController.Game.IngameState.IngameUi.InventoryPanel.IsVisible) return false;
 
-            Timer.Restart();
-            IsRunning = true;
-
-            return new Job("SimplePickIt", PickItem);
+            return true;
         }
 
         private List<LabelOnGround> GetItemToPick()
@@ -61,7 +59,7 @@ namespace SimplePickIt
             }
         }
 
-        private void PickItem()
+        private IEnumerator PickItems()
         {
             var window = GameController.Window.GetWindowRectangle();
             Stopwatch waitingTime = new Stopwatch();
@@ -72,16 +70,14 @@ namespace SimplePickIt
             var itemList = GetItemToPick();
             if (itemList == null)
             {
-                IsRunning = false;
-                return;
+                yield break;
             }
 
             do
             {
                 if (GameController.Game.IngameState.IngameUi.InventoryPanel.IsVisible)
                 {
-                    IsRunning = false;
-                    return;
+                    yield break;
                 }
 
                 if (Settings.MinLoop.Value != 0)
@@ -120,8 +116,7 @@ namespace SimplePickIt
 
                 if (nextItem.ItemOnGround.DistancePlayer > Settings.Range.Value)
                 {
-                    IsRunning = false;
-                    return;
+                    yield break;
                 }
 
                 var centerOfLabel = nextItem?.Label?.GetClientRect().Center
@@ -129,8 +124,7 @@ namespace SimplePickIt
                     + new Vector2(Random.Next(0, 2), Random.Next(0, 2));
                 if (!centerOfLabel.HasValue)
                 {
-                    IsRunning = false;
-                    return;
+                    yield break;
                 }
 
                 Input.SetCursorPos(centerOfLabel.Value);
@@ -150,8 +144,7 @@ namespace SimplePickIt
                 }
             } while (Input.GetKeyState(Settings.PickUpKey.Value) && itemList.Any());
 
-            IsRunning = false;
-            return;
+            yield break;
         }
     }
 }
